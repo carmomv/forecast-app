@@ -85,21 +85,32 @@ if historical_file and transition_file:
     if sku_filter:
         historical = historical[historical["sku"].isin(sku_filter)]
 
-    # Line Chart
-    st.subheader("Forecast vs Smoothed Forecast")
-    if "yhat" in historical.columns and "yhat_suavizado" in historical.columns:
-        forecast_melted = historical.melt(
-            id_vars=["sku", "ds"], 
-            value_vars=["yhat", "yhat_suavizado"], 
-            var_name="Forecast Type", 
-            value_name="Value"
-        )
+    # Plot total monthly forecast vs actual
+    if "ds" in historical.columns and "sales" in historical.columns and "yhat_suavizado" in historical.columns:
+        historical["ds"] = pd.to_datetime(historical["ds"])
+        monthly = historical.groupby(historical["ds"].dt.to_period("M")).agg({"sales": "sum", "yhat_suavizado": "sum"}).reset_index()
+        monthly["ds"] = monthly["ds"].astype(str)
 
-        fig = px.line(
-            forecast_melted, x="ds", y="Value", color="Forecast Type",
-            line_dash="Forecast Type", facet_row="sku", height=600
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        st.subheader("Monthly Total: Historical Sales vs Forecast")
+        fig_month = px.line(monthly, x="ds", y=["sales", "yhat_suavizado"], labels={"value": "Units", "ds": "Month"}, markers=True)
+        fig_month.update_layout(legend_title_text="Type")
+        st.plotly_chart(fig_month, use_container_width=True)
+
+        # Tabelas
+        st.subheader("Monthly Totals Table")
+        st.dataframe(monthly.rename(columns={"ds": "Month", "sales": "Historical Sales", "yhat_suavizado": "Forecast"}))
+
+        st.subheader("Category Totals Table")
+        if "category" in historical.columns:
+            category_total = historical.groupby("category").agg({"sales": "sum", "yhat_suavizado": "sum"}).reset_index()
+            category_total.columns = ["Category", "Historical Sales", "Forecast"]
+            st.dataframe(category_total)
+
+        st.subheader("Brand Totals Table")
+        if "brand" in historical.columns:
+            brand_total = historical.groupby("brand").agg({"sales": "sum", "yhat_suavizado": "sum"}).reset_index()
+            brand_total.columns = ["Brand", "Historical Sales", "Forecast"]
+            st.dataframe(brand_total)
 
     # Download
     st.subheader("\U0001F4E6 Download Final Forecast")
