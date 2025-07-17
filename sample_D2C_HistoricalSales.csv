@@ -1,0 +1,5 @@
+sku,channel,category,brand,ds,y,availability
+SKU001,Amazon,Refrigerators,Whirlpool,2024-05-01,120,0.9
+SKU001,Amazon,Refrigerators,Whirlpool,2024-06-01,135,1.0
+SKU002,BestBuy,Ovens,KitchenAid,2024-05-01,80,0.85
+SKU002,BestBuy,Ovens,KitchenAid,2024-06-01,90,0.95
