@@ -8,46 +8,64 @@ st.set_page_config(page_title="D2C Forecast Tool", layout="wide")
 # === STYLE ===
 st.markdown("""
     <style>
-        .title {
-            text-align: center;
-            font-size: 32px;
-            font-weight: 600;
-            color: #003057;
-            margin-top: -10px;
+        /* Sidebar styling */
+        section[data-testid="stSidebar"] {
+            width: 350px !important;
         }
-        .subtitle {
-            text-align: center;
-            font-size: 18px;
-            color: #555;
-            margin-bottom: 30px;
-        }
-        .logo-wrapper {
+
+        /* Center logo and content */
+        .main-title-wrapper {
             display: flex;
+            flex-direction: column;
+            align-items: center;
             justify-content: center;
-            margin-top: -20px;
-            margin-bottom: 10px;
+            margin-bottom: 2rem;
+            margin-top: 1rem;
         }
+
+        .main-title-wrapper img {
+            width: 160px;
+            margin-bottom: 0.3rem;
+        }
+
+        .main-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #003057;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: #444;
+            margin-top: 0.2rem;
+            text-align: center;
+            max-width: 800px;
+        }
+
         .block-container {
             padding-top: 2rem;
         }
-        .css-1d391kg .css-1offfwp {
-            width: 350px; /* Aumenta a largura da barra lateral */
-        }
-        hr {
-            margin: 2rem 0;
+
+        .stDownloadButton > button {
+            background-color: #003057;
+            color: white;
+            font-weight: bold;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# === LOGO E TÍTULO ===
-st.markdown('<div class="logo-wrapper"><img src="https://raw.githubusercontent.com/carmomv/forecast-app/main/Whirlpool_Corporation_Logo_(as_of_2017).svg.png" width="200"></div>', unsafe_allow_html=True)
-st.markdown('<div class="title">D2C Forecast Tool</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="subtitle">Multi-layer forecast based on historical sales, availability-weighted demand, and category-level seasonality</div>',
-    unsafe_allow_html=True
-)
+# === LOGO + TÍTULO ===
+st.markdown("""
+    <div class="main-title-wrapper">
+        <img src="https://raw.githubusercontent.com/carmomv/forecast-app/main/Whirlpool_Corporation_Logo_(as_of_2017).svg.png">
+        <div class="main-title">D2C Forecast Tool</div>
+        <div class="subtitle">
+            Multi-layer forecast based on historical sales, availability-weighted demand, and category-level seasonality
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
-# === UPLOAD ===
+# === UPLOADS ===
 st.sidebar.header("Upload Files")
 baseline_file = st.sidebar.file_uploader("Upload Baseline_Final_Por_SKU_Canal.csv", type="csv")
 forecast_file = st.sidebar.file_uploader("Upload Forecast_Completo_Com_Baseline_e_Transicoes.csv", type="csv")
@@ -62,12 +80,10 @@ if baseline_file and forecast_file:
     st.subheader("Forecast Preview")
     st.dataframe(forecast.head())
 
-    # Filter
     sku_filter = st.multiselect("Filter by SKU", forecast["sku_virtual"].unique())
     if sku_filter:
         forecast = forecast[forecast["sku_virtual"].isin(sku_filter)]
 
-    # Line Chart
     st.subheader("Forecast vs Smoothed Forecast")
     forecast_melted = forecast.melt(
         id_vars=["sku_virtual", "ds"], 
@@ -82,7 +98,6 @@ if baseline_file and forecast_file:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # Download
     st.subheader("\U0001F4E6 Download Final Forecast")
     st.download_button(
         label="Download CSV",
