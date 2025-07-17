@@ -80,7 +80,7 @@ if historical_file and transition_file:
     trans_map = dict(zip(df_trans[df_trans["OLD/NEW?"] == "NEW"]["sku_old"], df_trans[df_trans["OLD/NEW?"] == "NEW"]["sku_new"]))
     df_hist["sku_virtual"] = df_hist.apply(lambda row: trans_map.get(row["sku"], row["sku"]), axis=1)
     df_hist["key"] = df_hist["sku_virtual"] + "|" + df_hist["channel"]
-    df_hist["weighted_sales"] = df_hist["sales"] * df_hist["availability"]
+    df_hist["weighted_sales"] = df_hist["y"] * df_hist["availability"]
     df_hist["month"] = df_hist["ds"].dt.to_period("M")
 
     # Baseline por SKU
