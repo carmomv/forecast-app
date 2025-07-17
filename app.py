@@ -77,7 +77,8 @@ if historical_file and transition_file:
     forecast_months = pd.date_range(start=last_date + pd.offsets.MonthBegin(), periods=13, freq='MS')
 
     # SKU Virtual Mapping
-    trans_map = dict(zip(df_trans[df_trans["OLD/NEW?"] == "NEW"]["sku"], df_trans[df_trans["OLD/NEW?"] == "NEW"]["sku_virtual"]))
+    col_status = [c for c in df_trans.columns if "old" in c.lower()][0]
+    trans_map = dict(zip(df_trans[df_trans[col_status] == "NEW"]["sku"], df_trans[df_trans[col_status] == "NEW"]["sku_virtual"]))
     df_hist["sku_virtual"] = df_hist.apply(lambda row: trans_map.get(row["sku"], row["sku"]), axis=1)
     df_hist["key"] = df_hist["sku_virtual"] + "|" + df_hist["channel"]
     df_hist["weighted_sales"] = df_hist["sales"] * df_hist["availability"]
