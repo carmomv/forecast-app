@@ -3,26 +3,23 @@ import pandas as pd
 import plotly.express as px
 
 # === CONFIG ===
-st.set_page_config(page_title="Forecast Tool", layout="wide")
+st.set_page_config(page_title="D2C Forecast Tool", layout="wide")
 
 # === STYLE ===
 st.markdown("""
     <style>
-        body {
-            font-family: 'Segoe UI', sans-serif;
-        }
         .title {
             text-align: center;
             font-size: 32px;
             font-weight: 600;
             color: #003057;
-            margin-top: -30px;
+            margin-top: -10px;
         }
         .subtitle {
             text-align: center;
             font-size: 18px;
             color: #555;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
         }
         .block-container {
             padding-top: 2rem;
@@ -33,36 +30,36 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# === LOGO & HEADER ===
-st.image("https://upload.wikimedia.org/wikipedia/commons/2/2c/Whirlpool_logo_2022.svg", width=180)
-st.markdown('<div class="title">Forecast Generator</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Visualize and export forecast data by SKU, channel, and date</div>', unsafe_allow_html=True)
+# === LOGO E TÍTULO ===
+st.image("Whirlpool_Corporation_Logo_(as_of_2017).svg.png", width=180)
+st.markdown('<div class="title">D2C Forecast Tool</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="subtitle">Multi-layer forecast based on historical sales, availability-weighted demand, and category-level seasonality</div>',
+    unsafe_allow_html=True
+)
 
-# === FILE UPLOADS ===
+# === UPLOAD ===
 st.sidebar.header("Upload Files")
-baseline_file = st.sidebar.file_uploader("Upload Baseline CSV", type="csv")
-forecast_file = st.sidebar.file_uploader("Upload Forecast CSV", type="csv")
+baseline_file = st.sidebar.file_uploader("Upload Baseline_Final_Por_SKU_Canal.csv", type="csv")
+forecast_file = st.sidebar.file_uploader("Upload Forecast_Completo_Com_Baseline_e_Transicoes.csv", type="csv")
 
 if baseline_file and forecast_file:
     baseline = pd.read_csv(baseline_file)
     forecast = pd.read_csv(forecast_file)
 
-    st.markdown("### Baseline Preview")
-    st.dataframe(baseline.head(), use_container_width=True)
+    st.subheader("Baseline Preview")
+    st.dataframe(baseline.head())
 
-    st.markdown("---")
+    st.subheader("Forecast Preview")
+    st.dataframe(forecast.head())
 
-    st.markdown("### Forecast Preview")
-    st.dataframe(forecast.head(), use_container_width=True)
-
-    # === FILTER ===
+    # Filter
     sku_filter = st.multiselect("Filter by SKU", forecast["sku_virtual"].unique())
     if sku_filter:
         forecast = forecast[forecast["sku_virtual"].isin(sku_filter)]
 
-    # === LINE CHART ===
-    st.markdown("---")
-    st.markdown("### Forecast vs Smoothed")
+    # Line Chart
+    st.subheader("Forecast vs Smoothed Forecast")
     forecast_melted = forecast.melt(
         id_vars=["sku_virtual", "ds"], 
         value_vars=["yhat", "yhat_suavizado"], 
@@ -76,11 +73,10 @@ if baseline_file and forecast_file:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # === DOWNLOAD ===
-    st.markdown("---")
-    st.markdown("### Export Forecast")
+    # Download
+    st.subheader("\U0001F4E6 Download Final Forecast")
     st.download_button(
-        label="Download Final Forecast CSV",
+        label="Download CSV",
         data=forecast.to_csv(index=False),
         file_name="Forecast_Final.csv",
         mime="text/csv"
