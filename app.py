@@ -114,19 +114,29 @@ if historical_file and transition_file:
         forecast_df = pd.DataFrame(forecasts)
         forecast_df["ds"] = pd.to_datetime(forecast_df["ds"])
 
-        with st.expander("📈 Forecast Chart by Month", expanded=True):
-            total_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units"].sum().reset_index()
-            total_monthly["ds"] = total_monthly["ds"].astype(str)
-            fig = px.line(total_monthly, x="ds", y="forecast_units", title="Total Forecast per Month", markers=True)
+        df_hist_totals = df_hist.groupby(df_hist["ds"].dt.to_period("M"))["y"].sum().reset_index()
+        df_hist_totals.columns = ["ds", "historical_units"]
+        df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
+
+        forecast_plot = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units"].sum().reset_index()
+        forecast_plot.columns = ["ds", "forecast_units"]
+        forecast_plot["ds"] = forecast_plot["ds"].dt.to_timestamp()
+
+        total_combined = pd.merge(df_hist_totals, forecast_plot, on="ds", how="outer").fillna(0).sort_values("ds")
+
+        with st.expander("📈 Total Units per Month (Historical + Forecast)", expanded=True):
+            fig = px.line(total_combined, x="ds", y=["historical_units", "forecast_units"], markers=True,
+                          title="Historical and Forecast Units per Month")
+            fig.update_traces(mode="lines+markers+text", texttemplate='%{y:.0f}', textposition="top center")
             st.plotly_chart(fig, use_container_width=True)
 
-        with st.expander("🗓️ Forecast Table by Month", expanded=False):
-            st.dataframe(total_monthly.rename(columns={"ds": "Month", "forecast_units": "Forecast Units"}))
+        with st.expander("📊 Table: Monthly Totals", expanded=False):
+            st.dataframe(total_combined.rename(columns={"ds": "Month"}))
 
-        with st.expander("📊 Forecast Table by Category", expanded=False):
+        with st.expander("📊 Table: Forecast by Category", expanded=False):
             st.dataframe(forecast_df.groupby("category")["forecast_units"].sum().reset_index().rename(columns={"forecast_units": "Forecast Units"}))
 
-        with st.expander("🏷️ Forecast Table by Brand", expanded=False):
+        with st.expander("📊 Table: Forecast by Brand", expanded=False):
             st.dataframe(forecast_df.groupby("brand")["forecast_units"].sum().reset_index().rename(columns={"forecast_units": "Forecast Units"}))
 
         st.subheader("📥 Download Final Forecast")
