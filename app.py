@@ -29,7 +29,7 @@ st.markdown("""
             margin-bottom: 10px;
         }
         .logo-wrapper img {
-            width: 180px;
+            width: 250px;
             height: auto;
         }
         .block-container {
@@ -53,7 +53,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # === LOGO E TÍTULO ===
-st.markdown('<div class="logo-wrapper"><img src="https://raw.githubusercontent.com/carmomv/forecast-app/main/Whirlpool_Logo_Optimized.png"></div>', unsafe_allow_html=True)
+st.markdown('<div class="logo-wrapper"><img src="https://raw.githubusercontent.com/carmomv/forecast-app/main/Whirlpool_Corporation_Logo_Optimized.png"></div>', unsafe_allow_html=True)
 st.markdown('<div class="title">D2C Forecast Tool</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="subtitle">Multi-layer forecast based on historical sales, availability-weighted demand, and category-level seasonality</div>',
