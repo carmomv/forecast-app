@@ -21,6 +21,12 @@ st.markdown("""
             color: #555;
             margin-bottom: 30px;
         }
+        .logo-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-top: -40px;
+            margin-bottom: -10px;
+        }
         .block-container {
             padding-top: 2rem;
         }
@@ -31,7 +37,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # === LOGO E TÍTULO ===
-st.image("Whirlpool_Corporation_Logo_(as_of_2017).svg.png", width=180)
+st.markdown('<div class="logo-wrapper"><img src="Whirlpool_Corporation_Logo_(as_of_2017).svg.png" width="220"></div>', unsafe_allow_html=True)
 st.markdown('<div class="title">D2C Forecast Tool</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="subtitle">Multi-layer forecast based on historical sales, availability-weighted demand, and category-level seasonality</div>',
