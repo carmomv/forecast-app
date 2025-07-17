@@ -24,11 +24,12 @@ st.markdown("""
         .logo-wrapper {
             display: flex;
             justify-content: center;
+            align-items: center;
             margin-top: -10px;
             margin-bottom: 10px;
         }
         .logo-wrapper img {
-            max-width: 200px;
+            width: 180px;
             height: auto;
         }
         .block-container {
