@@ -139,7 +139,7 @@ if historical_file and transition_file:
     df_hist_totals.columns = ["ds", "historical_units"]
     df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
 
-    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units", "forecast_smooth"].sum().reset_index()
+    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))[["forecast_units", "forecast_smooth"]].sum().reset_index()
     forecast_monthly["ds"] = forecast_monthly["ds"].dt.to_timestamp()
 
     total_combined = pd.merge(df_hist_totals, forecast_monthly, on="ds", how="outer").fillna(0).sort_values("ds")
@@ -150,16 +150,16 @@ if historical_file and transition_file:
         forecast_df["ly_units"] = forecast_df.apply(lambda r: hist_lookup_full.get((r["ds_ly"], r["category"], r["brand"]), 0), axis=1)
         forecast_df["pct_vs_ly"] = ((forecast_df["forecast_units"] - forecast_df["ly_units"]) / forecast_df["ly_units"]).replace([float('inf'), -float('inf')], 0) * 100
 
-    with st.expander("📈 Total Units per Month (Historical + Forecast)", expanded=True):
+    with st.expander("\U0001F4C8 Total Units per Month (Historical + Forecast)", expanded=True):
         fig = px.line(total_combined, x="ds", y=["historical_units", "forecast_units", "forecast_smooth"], markers=True,
                       title="Historical and Forecast Units per Month")
         fig.update_traces(mode="lines+markers+text", texttemplate='%{y:.0f}', textposition="top center")
         st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("📊 Table: Monthly Totals", expanded=False):
+    with st.expander("\U0001F4CA Table: Monthly Totals", expanded=False):
         st.dataframe(total_combined.rename(columns={"ds": "Month"}))
 
-    with st.expander("📊 Table: Forecast by Category", expanded=False):
+    with st.expander("\U0001F4CA Table: Forecast by Category", expanded=False):
         df_cat = forecast_df.copy()
         if selected_brand != "All":
             df_cat = df_cat[df_cat["brand"] == selected_brand]
@@ -170,7 +170,7 @@ if historical_file and transition_file:
         else:
             st.dataframe(df_cat.groupby("category")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
-    with st.expander("📊 Table: Forecast by Brand", expanded=False):
+    with st.expander("\U0001F4CA Table: Forecast by Brand", expanded=False):
         df_brand = forecast_df.copy()
         if selected_category != "All":
             df_brand = df_brand[df_brand["category"] == selected_category]
@@ -181,7 +181,7 @@ if historical_file and transition_file:
         else:
             st.dataframe(df_brand.groupby("brand")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
-    st.subheader("📥 Download Final Forecast")
+    st.subheader("\U0001F4E5 Download Final Forecast")
     st.download_button(
         label="Download CSV",
         data=forecast_df.to_csv(index=False),
