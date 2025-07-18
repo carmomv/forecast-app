@@ -59,8 +59,6 @@ st.sidebar.markdown('<div class="file-upload-label">2 - Upload Transition SKUs F
 transition_file = st.sidebar.file_uploader("", type="csv", key="transition")
 st.sidebar.markdown('<div class="sample-link"><a href="https://raw.githubusercontent.com/carmomv/forecast-app/main/sample_Transition_SKUs.csv" target="_blank">Download sample file</a></div>', unsafe_allow_html=True)
 
-# === GENERATE BUTTON ===
-run_forecast = False
 if historical_file and transition_file:
     df_hist = pd.read_csv(historical_file)
     df_trans = pd.read_csv(transition_file)
@@ -76,6 +74,7 @@ if historical_file and transition_file:
     df_hist["weighted_sales"] = df_hist["y"] * df_hist["availability"]
     df_hist["ano_mes"] = df_hist["ds"].dt.to_period("M")
 
+    # === BASELINE POR CATEGORIA ===
     last_3_months = df_hist[df_hist["ds"] >= last_date - pd.DateOffset(months=3)]
     base_cat = last_3_months.groupby("category")["weighted_sales"].sum().reset_index()
     base_cat["baseline_mensal_categoria"] = base_cat["weighted_sales"] / 3
@@ -92,9 +91,7 @@ if historical_file and transition_file:
     cat_total = df_base.groupby("category")["avg_weighted_sales"].sum().reset_index()
     cat_total.columns = ["category", "total_cat"]
     df_base = df_base.merge(cat_total, on="category", how="left")
-    base_cat_total = base_cat["baseline_mensal_categoria"].sum()
-    df_base = df_base.merge(base_cat[["category", "baseline_mensal_categoria"]], on="category", how="left")
-    df_base["baseline_sku"] = df_base["avg_weighted_sales"] / df_base["total_cat"] * df_base["baseline_mensal_categoria"]
+    df_base["baseline_sku"] = df_base["avg_weighted_sales"] / df_base["total_cat"] * 18222.38333
 
     saz_raw = df_hist.groupby(["category", "ano_mes"])["weighted_sales"].sum().reset_index()
     media_cat = saz_raw.groupby("category")["weighted_sales"].mean().reset_index()
@@ -116,16 +113,7 @@ if historical_file and transition_file:
                               "category": row["category"], "brand": row["brand"], "forecast_units": yhat})
     forecast_df = pd.DataFrame(forecasts)
 
-    # === INFLATION FACTORS ===
-    st.sidebar.markdown("### Optional: Manual Adjustment Factors")
-    inflation_factors = {}
-    for m in forecast_months:
-        label = m.strftime("%b %Y")
-        inflation_factors[m] = st.sidebar.number_input(f"{label} factor", value=1.0, step=0.1)
-
-    forecast_df["inflation_factor"] = forecast_df["ds"].map(inflation_factors)
-    forecast_df["forecast_units"] *= forecast_df["inflation_factor"]
-
+    forecast_df["forecast_smooth"] = forecast_df.groupby("sku_virtual")["forecast_units"].transform(lambda x: x.rolling(3, min_periods=1).mean())
     forecast_df = forecast_df.sort_values(by=["sku_virtual", "channel", "ds"])
     forecast_df["forecast_smooth"] = forecast_df.groupby(["sku_virtual", "channel"])["forecast_units"].transform(lambda x: x.rolling(3, min_periods=1, center=True).mean())
 
@@ -141,15 +129,41 @@ if historical_file and transition_file:
     st.subheader("Final Forecast Preview")
     st.dataframe(forecast_df.head())
 
-    # Continuação da UI e filtros...
-    # (sem alterações para manter integridade do cálculo)
-    if st.sidebar.button("Generate Forecast"):
-        run_forecast = True
+    df_hist_totals = df_hist.groupby(df_hist["ds"].dt.to_period("M"))["y"].sum().reset_index()
+    df_hist_totals.columns = ["ds", "historical_units"]
+    df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
 
-if run_forecast:
-    # Lógica do forecast permanece inalterada
-    # (O conteúdo do cálculo permanece igual ao anterior)
-    st.success("Forecast successfully generated with adjustment factors. Displaying results...")
+    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))[["forecast_units", "forecast_smooth"]].sum().reset_index()
+    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units", "forecast_smooth"].sum().reset_index()
+    forecast_monthly["ds"] = forecast_monthly["ds"].dt.to_timestamp()
+    total_combined = pd.merge(df_hist_totals, forecast_monthly, on="ds", how="outer").fillna(0).sort_values("ds")
+
+    with st.expander("📈 Total Units per Month (Historical + Forecast)", expanded=True):
+    with st.expander("\U0001F4C8 Total Units per Month (Historical + Forecast)", expanded=True):
+        fig = px.line(total_combined, x="ds", y=["historical_units", "forecast_units", "forecast_smooth"], markers=True,
+                      title="Historical and Forecast Units per Month")
+        fig.update_traces(mode="lines+markers+text", texttemplate='%{y:.0f}', textposition="top center")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("📊 Table: Monthly Totals", expanded=False):
+    with st.expander("\U0001F4CA Table: Monthly Totals", expanded=False):
+        st.dataframe(total_combined.rename(columns={"ds": "Month"}))
+
+    with st.expander("📊 Table: Forecast by Category", expanded=False):
+    with st.expander("\U0001F4CA Table: Forecast by Category", expanded=False):
+        st.dataframe(forecast_df.groupby("category")[["forecast_units", "forecast_smooth"]].sum().reset_index())
+
+    with st.expander("📊 Table: Forecast by Brand", expanded=False):
+    with st.expander("\U0001F4CA Table: Forecast by Brand", expanded=False):
+        st.dataframe(forecast_df.groupby("brand")[["forecast_units", "forecast_smooth"]].sum().reset_index())
+
+    st.subheader("📥 Download Final Forecast")
+    st.subheader("\U0001F4E5 Download Final Forecast")
+    st.download_button(
+        label="Download CSV",
+        data=forecast_df.to_csv(index=False),
+        file_name="Forecast_Final.csv",
+        mime="text/csv"
+    )
 else:
     st.info("Please upload both historical sales and transition files in the sidebar to begin.")
-    st.info("Please upload both historical sales and transition files and click 'Generate Forecast' to continue.")
