@@ -133,7 +133,7 @@ if historical_file and transition_file:
     df_hist_totals.columns = ["ds", "historical_units"]
     df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
 
-    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units", "forecast_smooth"].sum().reset_index()
+    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))[["forecast_units", "forecast_smooth"]].sum().reset_index()
     forecast_monthly["ds"] = forecast_monthly["ds"].dt.to_timestamp()
     total_combined = pd.merge(df_hist_totals, forecast_monthly, on="ds", how="outer").fillna(0).sort_values("ds")
 
@@ -147,10 +147,10 @@ if historical_file and transition_file:
         st.dataframe(total_combined.rename(columns={"ds": "Month"}))
 
     with st.expander("📊 Table: Forecast by Category", expanded=False):
-        st.dataframe(forecast_df.groupby("category")["forecast_units", "forecast_smooth"].sum().reset_index())
+        st.dataframe(forecast_df.groupby("category")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
     with st.expander("📊 Table: Forecast by Brand", expanded=False):
-        st.dataframe(forecast_df.groupby("brand")["forecast_units", "forecast_smooth"].sum().reset_index())
+        st.dataframe(forecast_df.groupby("brand")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
     st.subheader("📥 Download Final Forecast")
     st.download_button(
