@@ -66,13 +66,11 @@ if historical_file and transition_file:
     df_hist["ds"] = pd.to_datetime(df_hist["ds"])
     last_date = df_hist["ds"].max()
 
-    # Corrigir coluna de SKU virtual
     df_trans.columns = [col.strip().lower() for col in df_trans.columns]
     trans_map = dict(zip(df_trans[df_trans["old/new?"] == "NEW"]["sku_old"], df_trans[df_trans["old/new?"] == "NEW"]["sku_new"]))
     df_hist["sku_virtual"] = df_hist.apply(lambda row: trans_map.get(row["sku"], row["sku"]), axis=1)
     df_hist["key"] = df_hist["sku_virtual"] + "|" + df_hist["channel"]
 
-    # Peso e filtros para baseline
     df_hist["weighted_sales"] = df_hist["y"] * df_hist["availability"]
     df_hist["ano_mes"] = df_hist["ds"].dt.to_period("M")
     last_3 = df_hist[df_hist["ds"] >= last_date - pd.DateOffset(months=3)]
@@ -80,18 +78,15 @@ if historical_file and transition_file:
                                               avg_availability=("availability", "mean"),
                                               avg_weighted_sales=("weighted_sales", "mean")).reset_index()
 
-    # Baseline com infos
     df_meta = df_hist.drop_duplicates("key")[["sku", "sku_virtual", "channel", "category", "brand", "key"]]
     df_base = df_meta.merge(baseline_sku, on="key", how="left")
     df_base = df_base.fillna(0)
 
-    # Baseline da categoria
     cat_total = df_base.groupby("category")["avg_weighted_sales"].sum().reset_index()
     cat_total.columns = ["category", "total_cat"]
     df_base = df_base.merge(cat_total, on="category", how="left")
     df_base["baseline_sku"] = df_base["avg_weighted_sales"] / df_base["total_cat"] * 18222.38333
 
-    # Sazonalidade oficial por mês
     saz_raw = df_hist.groupby(["category", "ano_mes"])["weighted_sales"].sum().reset_index()
     media_cat = saz_raw.groupby("category")["weighted_sales"].mean().reset_index()
     media_cat.columns = ["category", "media_mensal_categoria"]
@@ -101,7 +96,6 @@ if historical_file and transition_file:
     saz_final = saz.groupby(["category", "mes"])["fator_sazonalidade"].mean().reset_index()
     saz_final["fator_sazonalidade"] = saz_final["fator_sazonalidade"].apply(lambda x: max(x, 0.7))
 
-    # Forecast principal
     forecast_months = pd.date_range(start=last_date + pd.offsets.MonthBegin(), periods=13, freq='MS')
     forecasts = []
     for _, row in df_base.iterrows():
@@ -113,10 +107,8 @@ if historical_file and transition_file:
                               "category": row["category"], "brand": row["brand"], "forecast_units": yhat})
     forecast_df = pd.DataFrame(forecasts)
 
-    # Forecast suavizado
     forecast_df["forecast_smooth"] = forecast_df.groupby("sku_virtual")["forecast_units"].transform(lambda x: x.rolling(3, min_periods=1).mean())
 
-    # Aplicar transição por data_in/date_out
     df_trans = df_trans.dropna(subset=["date_out", "date_in"])
     df_trans["date_out"] = pd.to_datetime(df_trans["date_out"], errors="coerce")
     df_trans["date_in"] = pd.to_datetime(df_trans["date_in"], errors="coerce")
