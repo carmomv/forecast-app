@@ -73,6 +73,12 @@ if historical_file and transition_file:
 
     df_hist["weighted_sales"] = df_hist["y"] * df_hist["availability"]
     df_hist["ano_mes"] = df_hist["ds"].dt.to_period("M")
+
+    # === BASELINE POR CATEGORIA ===
+    last_3_months = df_hist[df_hist["ds"] >= last_date - pd.DateOffset(months=3)]
+    base_cat = last_3_months.groupby("category")["weighted_sales"].sum().reset_index()
+    base_cat["baseline_mensal_categoria"] = base_cat["weighted_sales"] / 3
+
     last_3 = df_hist[df_hist["ds"] >= last_date - pd.DateOffset(months=3)]
     baseline_sku = last_3.groupby("key").agg(avg_sales_L3M=("y", "mean"),
                                               avg_availability=("availability", "mean"),
@@ -107,7 +113,8 @@ if historical_file and transition_file:
                               "category": row["category"], "brand": row["brand"], "forecast_units": yhat})
     forecast_df = pd.DataFrame(forecasts)
 
-    forecast_df["forecast_smooth"] = forecast_df.groupby("sku_virtual")["forecast_units"].transform(lambda x: x.rolling(3, min_periods=1).mean())
+    forecast_df = forecast_df.sort_values(by=["sku_virtual", "channel", "ds"])
+    forecast_df["forecast_smooth"] = forecast_df.groupby(["sku_virtual", "channel"])["forecast_units"].transform(lambda x: x.rolling(3, min_periods=1, center=True).mean())
 
     df_trans = df_trans.dropna(subset=["date_out", "date_in"])
     df_trans["date_out"] = pd.to_datetime(df_trans["date_out"], errors="coerce")
@@ -125,26 +132,26 @@ if historical_file and transition_file:
     df_hist_totals.columns = ["ds", "historical_units"]
     df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
 
-    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))[["forecast_units", "forecast_smooth"]].sum().reset_index()
+    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units", "forecast_smooth"].sum().reset_index()
     forecast_monthly["ds"] = forecast_monthly["ds"].dt.to_timestamp()
     total_combined = pd.merge(df_hist_totals, forecast_monthly, on="ds", how="outer").fillna(0).sort_values("ds")
 
-    with st.expander("📈 Total Units per Month (Historical + Forecast)", expanded=True):
+    with st.expander("\U0001F4C8 Total Units per Month (Historical + Forecast)", expanded=True):
         fig = px.line(total_combined, x="ds", y=["historical_units", "forecast_units", "forecast_smooth"], markers=True,
                       title="Historical and Forecast Units per Month")
         fig.update_traces(mode="lines+markers+text", texttemplate='%{y:.0f}', textposition="top center")
         st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("📊 Table: Monthly Totals", expanded=False):
+    with st.expander("\U0001F4CA Table: Monthly Totals", expanded=False):
         st.dataframe(total_combined.rename(columns={"ds": "Month"}))
 
-    with st.expander("📊 Table: Forecast by Category", expanded=False):
+    with st.expander("\U0001F4CA Table: Forecast by Category", expanded=False):
         st.dataframe(forecast_df.groupby("category")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
-    with st.expander("📊 Table: Forecast by Brand", expanded=False):
+    with st.expander("\U0001F4CA Table: Forecast by Brand", expanded=False):
         st.dataframe(forecast_df.groupby("brand")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
-    st.subheader("📥 Download Final Forecast")
+    st.subheader("\U0001F4E5 Download Final Forecast")
     st.download_button(
         label="Download CSV",
         data=forecast_df.to_csv(index=False),
