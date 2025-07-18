@@ -87,27 +87,32 @@ if run_forecast:
     if category_filter != "All":
         filtered_data = filtered_data[filtered_data['category'] == category_filter]
 
-    view_option = st.radio("Select View", ["Historical Sales + Forecast", "Forecast vs LY"])
+    # Campo para ajuste manual por mês
+    st.markdown("**Manual Adjustment Factors by Month**")
+    filtered_data['ds'] = pd.to_datetime(filtered_data['ds'])
+    future_months = sorted(filtered_data[filtered_data['ds'] > filtered_data['ds'].max() - pd.DateOffset(months=13)]['ds'].dt.to_period("M").unique().to_timestamp())
+
+    adjustment_factors = {}
+    for month in future_months:
+        month_str = month.strftime("%b %Y")
+        factor = st.number_input(f"Adjustment factor for {month_str}", min_value=0.0, value=1.0, step=0.01, format="%.2f")
+        adjustment_factors[month] = factor
+
+    # Aplicar os fatores manuais ao dataset
+    filtered_data['adjustment_factor'] = filtered_data['ds'].dt.to_period("M").dt.to_timestamp().map(adjustment_factors).fillna(1.0)
+    filtered_data['adjusted_y'] = filtered_data['y'] * filtered_data['adjustment_factor']
 
     # Agrupamento
-    df_hist['ds'] = pd.to_datetime(df_hist['ds'])
-    filtered_data['ds'] = pd.to_datetime(filtered_data['ds'])
-    monthly_summary = filtered_data.groupby(filtered_data["ds"].dt.to_period("M"))['y'].sum().reset_index()
+    monthly_summary = filtered_data.groupby(filtered_data["ds"].dt.to_period("M"))['adjusted_y'].sum().reset_index()
     monthly_summary['ds'] = monthly_summary['ds'].dt.to_timestamp()
 
-    # Comparação Forecast vs LY (Mock para exibição)
-    if view_option == "Forecast vs LY":
-        monthly_summary['LY'] = monthly_summary['y'].shift(12)
-        monthly_summary['pct_change'] = ((monthly_summary['y'] - monthly_summary['LY']) / monthly_summary['LY']) * 100
-        st.dataframe(monthly_summary[['ds', 'y', 'LY', 'pct_change']].round(2))
-    else:
-        # Gráfico
-        fig = px.line(monthly_summary, x='ds', y='y', title='Historical Units per Month', markers=True, text='y')
-        fig.update_traces(texttemplate='%{text:.2s}', textposition='top center')
-        fig.update_layout(yaxis_title='Units', xaxis_title='Month')
-        st.plotly_chart(fig, use_container_width=True)
+    # Gráfico
+    fig = px.line(monthly_summary, x='ds', y='adjusted_y', title='Historical + Forecast Units per Month (Adjusted)', markers=True, text='adjusted_y')
+    fig.update_traces(texttemplate='%{text:.2f}', textposition='top center')
+    fig.update_layout(yaxis_title='Units', xaxis_title='Month')
+    st.plotly_chart(fig, use_container_width=True)
 
-        # Tabela
-        st.dataframe(monthly_summary[['ds', 'y']].rename(columns={'y': 'Units'}).round(2))
+    # Tabela
+    st.dataframe(monthly_summary[['ds', 'adjusted_y']].rename(columns={'adjusted_y': 'Units'}).round(2))
 else:
     st.info("Please upload both historical sales and transition files and click 'Generate Forecast' to continue.")
