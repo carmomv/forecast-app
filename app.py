@@ -41,6 +41,22 @@ st.markdown("""
             font-size: 13px;
             margin-bottom: 10px;
         }
+        .stButton>button {
+            background-color: #007A33;
+            color: white;
+            font-weight: bold;
+            border-radius: 5px;
+            padding: 0.4em 1em;
+            margin-top: 0.5em;
+        }
+        .stButton>button:hover {
+            background-color: #005c25;
+            color: white;
+        }
+        .stButton>button:focus {
+            background-color: #007A33;
+            color: white;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -59,111 +75,127 @@ st.sidebar.markdown('<div class="file-upload-label">2 - Upload Transition SKUs F
 transition_file = st.sidebar.file_uploader("", type="csv", key="transition")
 st.sidebar.markdown('<div class="sample-link"><a href="https://raw.githubusercontent.com/carmomv/forecast-app/main/sample_Transition_SKUs.csv" target="_blank">Download sample file</a></div>', unsafe_allow_html=True)
 
+# === GENERATE BUTTON ===
+run_forecast = False
 if historical_file and transition_file:
+    if st.sidebar.button("Generate Forecast"):
+        run_forecast = True
+
+if run_forecast:
+    st.success("Forecast successfully generated. Displaying results...")
+
     df_hist = pd.read_csv(historical_file)
     df_trans = pd.read_csv(transition_file)
 
-    df_hist["ds"] = pd.to_datetime(df_hist["ds"])
-    last_date = df_hist["ds"].max()
+    df_hist['ds'] = pd.to_datetime(df_hist['ds'])
+    df_hist = df_hist[df_hist['ds'].notna() & df_hist['y'].notna()]
+    df_hist = df_hist.sort_values(by='ds')
 
-    df_trans.columns = [col.strip().lower() for col in df_trans.columns]
-    trans_map = dict(zip(df_trans[df_trans["old/new?"] == "NEW"]["sku_old"], df_trans[df_trans["old/new?"] == "NEW"]["sku_new"]))
-    df_hist["sku_virtual"] = df_hist.apply(lambda row: trans_map.get(row["sku"], row["sku"]), axis=1)
-    df_hist["key"] = df_hist["sku_virtual"] + "|" + df_hist["channel"]
+    # SKU transition
+    trans_map = dict(zip(df_trans[df_trans["OLD/NEW?"] == "NEW"]["sku_old"], df_trans[df_trans["OLD/NEW?"] == "NEW"]["sku_new"]))
+    df_hist['sku_virtual'] = df_hist['sku'].replace(trans_map)
+    df_hist['sku_virtual'] = df_hist['sku_virtual'].fillna(df_hist['sku'])
 
-    df_hist["weighted_sales"] = df_hist["y"] * df_hist["availability"]
-    df_hist["ano_mes"] = df_hist["ds"].dt.to_period("M")
+    # Weighted sales
+    df_hist['weighted_sales'] = df_hist['y'] * df_hist['availability']
 
-    # === BASELINE POR CATEGORIA ===
-    last_3_months = df_hist[df_hist["ds"] >= last_date - pd.DateOffset(months=3)]
-    base_cat = last_3_months.groupby("category")["weighted_sales"].sum().reset_index()
-    base_cat["baseline_mensal_categoria"] = base_cat["weighted_sales"] / 3
+    # Baseline por categoria
+    last_date = df_hist['ds'].max()
+    df_last_3 = df_hist[df_hist['ds'] >= (last_date - pd.DateOffset(months=3))]
+    df_base_cat = df_last_3.groupby('category')['weighted_sales'].sum().reset_index()
+    df_base_cat['baseline_mensal_categoria'] = df_base_cat['weighted_sales'] / 3
 
-    last_3 = df_hist[df_hist["ds"] >= last_date - pd.DateOffset(months=3)]
-    baseline_sku = last_3.groupby("key").agg(avg_sales_L3M=("y", "mean"),
-                                              avg_availability=("availability", "mean"),
-                                              avg_weighted_sales=("weighted_sales", "mean")).reset_index()
+    # Share por SKU
+    df_share = df_last_3.groupby(['sku_virtual', 'category'])['weighted_sales'].sum().reset_index()
+    df_total_cat = df_share.groupby('category')['weighted_sales'].sum().reset_index().rename(columns={'weighted_sales': 'total_cat'})
+    df_share = pd.merge(df_share, df_total_cat, on='category')
+    df_share['share'] = df_share['weighted_sales'] / df_share['total_cat']
+    df_share = pd.merge(df_share, df_base_cat[['category', 'baseline_mensal_categoria']], on='category')
+    df_share['forecast_units'] = df_share['share'] * df_share['baseline_mensal_categoria']
 
-    df_meta = df_hist.drop_duplicates("key")[["sku", "sku_virtual", "channel", "category", "brand", "key"]]
-    df_base = df_meta.merge(baseline_sku, on="key", how="left")
-    df_base = df_base.fillna(0)
+    # Sazonalidade
+    df_hist['month'] = df_hist['ds'].dt.month
+    df_season = df_hist.groupby(['category', 'month'])['y'].mean().reset_index()
+    df_season = df_season.groupby('category').apply(lambda x: x.set_index('month')['y'] / x['y'].mean()).reset_index()
+    df_season.columns = ['category', 'month', 'seasonality']
+    df_season['seasonality'] = df_season['seasonality'].apply(lambda x: max(x, 0.7))
 
-    cat_total = df_base.groupby("category")["avg_weighted_sales"].sum().reset_index()
-    cat_total.columns = ["category", "total_cat"]
-    df_base = df_base.merge(cat_total, on="category", how="left")
-    df_base["baseline_sku"] = df_base["avg_weighted_sales"] / df_base["total_cat"] * 18222.38333
+    # Previsao final
+    future_months = pd.date_range(start=last_date + pd.DateOffset(months=1), periods=13, freq='MS')
+    forecast_list = []
+    for _, row in df_share.iterrows():
+        for date in future_months:
+            month = date.month
+            saz = df_season[(df_season['category'] == row['category']) & (df_season['month'] == month)]['seasonality'].values
+            saz = saz[0] if len(saz) > 0 else 1.0
+            forecast_list.append({
+                'ds': date,
+                'sku': row['sku_virtual'],
+                'category': row['category'],
+                'brand': df_hist[df_hist['sku_virtual'] == row['sku_virtual']]['brand'].iloc[0],
+                'forecast_units': row['forecast_units'] * saz
+            })
 
-    saz_raw = df_hist.groupby(["category", "ano_mes"])["weighted_sales"].sum().reset_index()
-    media_cat = saz_raw.groupby("category")["weighted_sales"].mean().reset_index()
-    media_cat.columns = ["category", "media_mensal_categoria"]
-    saz = saz_raw.merge(media_cat, on="category")
-    saz["fator_sazonalidade"] = saz["weighted_sales"] / saz["media_mensal_categoria"]
-    saz["mes"] = saz["ano_mes"].dt.month
-    saz_final = saz.groupby(["category", "mes"])["fator_sazonalidade"].mean().reset_index()
-    saz_final["fator_sazonalidade"] = saz_final["fator_sazonalidade"].apply(lambda x: max(x, 0.7))
+    df_forecast = pd.DataFrame(forecast_list)
 
-    forecast_months = pd.date_range(start=last_date + pd.offsets.MonthBegin(), periods=13, freq='MS')
-    forecasts = []
-    for _, row in df_base.iterrows():
-        for m in forecast_months:
-            fator = saz_final.loc[(saz_final["category"] == row["category"]) & (saz_final["mes"] == m.month), "fator_sazonalidade"].values
-            fator = fator[0] if len(fator) > 0 else 0.7
-            yhat = row["baseline_sku"] * fator
-            forecasts.append({"ds": m, "sku": row["sku"], "sku_virtual": row["sku_virtual"], "channel": row["channel"],
-                              "category": row["category"], "brand": row["brand"], "forecast_units": yhat})
-    forecast_df = pd.DataFrame(forecasts)
+    # Aplicar transições de SKU com base em data
+    df_trans['date_in'] = pd.to_datetime(df_trans['date_in'], errors='coerce')
+    df_trans['date_out'] = pd.to_datetime(df_trans['date_out'], errors='coerce')
+    for _, row in df_trans.iterrows():
+        sku = row['sku_new']
+        if pd.notna(row['date_in']):
+            df_forecast.loc[(df_forecast['sku'] == sku) & (df_forecast['ds'] < row['date_in']), ['forecast_units']] = 0
+        if pd.notna(row['date_out']):
+            df_forecast.loc[(df_forecast['sku'] == sku) & (df_forecast['ds'] > row['date_out']), ['forecast_units']] = 0
 
-    forecast_df["forecast_smooth"] = forecast_df.groupby("sku_virtual")["forecast_units"].transform(lambda x: x.rolling(3, min_periods=1).mean())
-    forecast_df = forecast_df.sort_values(by=["sku_virtual", "channel", "ds"])
-    forecast_df["forecast_smooth"] = forecast_df.groupby(["sku_virtual", "channel"])["forecast_units"].transform(lambda x: x.rolling(3, min_periods=1, center=True).mean())
+    # Forecast suavizado
+    df_forecast['forecast_smooth'] = df_forecast.groupby('sku')['forecast_units'].transform(lambda x: x.rolling(3, center=True, min_periods=1).mean())
 
-    df_trans = df_trans.dropna(subset=["date_out", "date_in"])
-    df_trans["date_out"] = pd.to_datetime(df_trans["date_out"], errors="coerce")
-    df_trans["date_in"] = pd.to_datetime(df_trans["date_in"], errors="coerce")
-    forecast_df = forecast_df.merge(df_trans, left_on="sku", right_on="sku_old", how="left")
-    forecast_df = forecast_df.merge(df_trans, left_on="sku", right_on="sku_new", how="left", suffixes=("_old", "_new"))
-    forecast_df["forecast_units"] = forecast_df.apply(lambda r: 0 if (pd.notna(r["date_out_old"]) and r["ds"] >= r["date_out_old"]) else r["forecast_units"], axis=1)
-    forecast_df["forecast_units"] = forecast_df.apply(lambda r: 0 if (pd.notna(r["date_in_new"]) and r["ds"] < r["date_in_new"]) else r["forecast_units"], axis=1)
-    forecast_df["forecast_smooth"] = forecast_df.apply(lambda r: 0 if r["forecast_units"] == 0 else r["forecast_smooth"], axis=1)
+    # Concatenar historico e previsao
+    df_all = pd.concat([
+        df_hist[['ds', 'sku_virtual', 'brand', 'category', 'y']].rename(columns={'sku_virtual': 'sku'}),
+        df_forecast[['ds', 'sku', 'brand', 'category', 'forecast_units', 'forecast_smooth']]
+    ], ignore_index=True)
 
-    st.subheader("Final Forecast Preview")
-    st.dataframe(forecast_df.head())
+    # Manual adjustments
+    st.sidebar.markdown("**Manual Adjustment Factors by Month**")
+    month_factors = {}
+    for date in future_months:
+        label = date.strftime("%b %Y")
+        month_factors[date] = st.sidebar.number_input(f"{label}", min_value=0.0, value=1.0, step=0.01, format="%.2f", key=label)
 
-    df_hist_totals = df_hist.groupby(df_hist["ds"].dt.to_period("M"))["y"].sum().reset_index()
-    df_hist_totals.columns = ["ds", "historical_units"]
-    df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
+    apply_adj = st.sidebar.button("Run Manual Adjustments")
 
-    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))[["forecast_units", "forecast_smooth"]].sum().reset_index()
-    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units", "forecast_smooth"].sum().reset_index()
-    forecast_monthly["ds"] = forecast_monthly["ds"].dt.to_timestamp()
-    total_combined = pd.merge(df_hist_totals, forecast_monthly, on="ds", how="outer").fillna(0).sort_values("ds")
+    if apply_adj:
+        df_forecast['adjustment'] = df_forecast['ds'].map(month_factors).fillna(1.0)
+        df_forecast['forecast_units'] *= df_forecast['adjustment']
+        df_forecast['forecast_smooth'] *= df_forecast['adjustment']
+        df_all.update(df_forecast[['ds', 'sku', 'forecast_units', 'forecast_smooth']])
 
-    with st.expander("📈 Total Units per Month (Historical + Forecast)", expanded=True):
-    with st.expander("\U0001F4C8 Total Units per Month (Historical + Forecast)", expanded=True):
-        fig = px.line(total_combined, x="ds", y=["historical_units", "forecast_units", "forecast_smooth"], markers=True,
-                      title="Historical and Forecast Units per Month")
-        fig.update_traces(mode="lines+markers+text", texttemplate='%{y:.0f}', textposition="top center")
-        st.plotly_chart(fig, use_container_width=True)
+    # Filtros visuais
+    st.subheader("Visualizations")
+    brand_filter = st.selectbox("Select Brand", options=["All"] + sorted(df_all['brand'].dropna().unique()))
+    category_filter = st.selectbox("Select Category", options=["All"] + sorted(df_all['category'].dropna().unique()))
 
-    with st.expander("📊 Table: Monthly Totals", expanded=False):
-    with st.expander("\U0001F4CA Table: Monthly Totals", expanded=False):
-        st.dataframe(total_combined.rename(columns={"ds": "Month"}))
+    df_plot = df_all.copy()
+    if brand_filter != "All":
+        df_plot = df_plot[df_plot['brand'] == brand_filter]
+    if category_filter != "All":
+        df_plot = df_plot[df_plot['category'] == category_filter]
 
-    with st.expander("📊 Table: Forecast by Category", expanded=False):
-    with st.expander("\U0001F4CA Table: Forecast by Category", expanded=False):
-        st.dataframe(forecast_df.groupby("category")[["forecast_units", "forecast_smooth"]].sum().reset_index())
+    summary = df_plot.groupby('ds').agg({
+        'y': 'sum',
+        'forecast_units': 'sum',
+        'forecast_smooth': 'sum'
+    }).reset_index()
 
-    with st.expander("📊 Table: Forecast by Brand", expanded=False):
-    with st.expander("\U0001F4CA Table: Forecast by Brand", expanded=False):
-        st.dataframe(forecast_df.groupby("brand")[["forecast_units", "forecast_smooth"]].sum().reset_index())
+    fig = px.line(summary, x='ds', y=['y', 'forecast_units', 'forecast_smooth'],
+                  labels={'value': 'Units', 'ds': 'Date', 'variable': 'Type'},
+                  title='Historical and Forecasted Sales')
+    fig.update_layout(legend_title_text='Legend')
+    st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("📥 Download Final Forecast")
-    st.subheader("\U0001F4E5 Download Final Forecast")
-    st.download_button(
-        label="Download CSV",
-        data=forecast_df.to_csv(index=False),
-        file_name="Forecast_Final.csv",
-        mime="text/csv"
-    )
+    st.dataframe(summary.round(2))
+
 else:
-    st.info("Please upload both historical sales and transition files in the sidebar to begin.")
+    st.info("Please upload both historical sales and transition files and click 'Generate Forecast' to continue.")
