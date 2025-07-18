@@ -91,7 +91,9 @@ if historical_file and transition_file:
     cat_total = df_base.groupby("category")["avg_weighted_sales"].sum().reset_index()
     cat_total.columns = ["category", "total_cat"]
     df_base = df_base.merge(cat_total, on="category", how="left")
-    df_base["baseline_sku"] = df_base["avg_weighted_sales"] / df_base["total_cat"] * 18222.38333
+    base_cat_total = base_cat["baseline_mensal_categoria"].sum()
+    df_base = df_base.merge(base_cat[["category", "baseline_mensal_categoria"]], on="category", how="left")
+    df_base["baseline_sku"] = df_base["avg_weighted_sales"] / df_base["total_cat"] * df_base["baseline_mensal_categoria"]
 
     saz_raw = df_hist.groupby(["category", "ano_mes"])["weighted_sales"].sum().reset_index()
     media_cat = saz_raw.groupby("category")["weighted_sales"].mean().reset_index()
@@ -132,7 +134,7 @@ if historical_file and transition_file:
     df_hist_totals.columns = ["ds", "historical_units"]
     df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
 
-    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units", "forecast_smooth"].sum().reset_index()
+    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))[["forecast_units", "forecast_smooth"]].sum().reset_index()
     forecast_monthly["ds"] = forecast_monthly["ds"].dt.to_timestamp()
     total_combined = pd.merge(df_hist_totals, forecast_monthly, on="ds", how="outer").fillna(0).sort_values("ds")
 
