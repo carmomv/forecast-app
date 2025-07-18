@@ -1,3 +1,4 @@
+@@ -1,97 +1,113 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -67,13 +68,53 @@ if historical_file and transition_file:
 
 if run_forecast:
     # Lógica do forecast permanece inalterada
-    # (O conteúdo do cálculo permanece igual ao anterior)
     st.success("Forecast successfully generated with adjustment factors. Displaying results...")
 
-    # Placeholder de exemplo para visualização dos dados após execução do forecast
-    st.subheader("Forecast Overview")
-    # Essas linhas são apenas para visualização de exemplo e devem ser substituídas pelos resultados reais do forecast
-    st.write("Forecast totals, visualizations and comparison tables will appear here once the logic is integrated.")
+    df_hist = pd.read_csv(historical_file)
+    df_trans = pd.read_csv(transition_file)
 
+    # Preview
+    st.subheader("Forecast Overview")
+    st.write("Historical Sales Preview", df_hist.head())
+    st.write("Transition SKUs Preview", df_trans.head())
+
+    # Exemplo de gráfico com filtro por marca e categoria (substituir pela lógica de forecast já existente)
+    # Filtros
+    brand_filter = st.selectbox("Select Brand", options=["All"] + sorted(df_hist['brand'].dropna().unique().tolist()))
+    category_filter = st.selectbox("Select Category", options=["All"] + sorted(df_hist['category'].dropna().unique().tolist()))
+
+    filtered_data = df_hist.copy()
+    if brand_filter != "All":
+        filtered_data = filtered_data[filtered_data['brand'] == brand_filter]
+    if category_filter != "All":
+        filtered_data = filtered_data[filtered_data['category'] == category_filter]
+
+    monthly_summary = filtered_data.groupby(pd.to_datetime(filtered_data["ds"]).dt.to_period("M"))['y'].sum().reset_index()
+    view_option = st.radio("Select View", ["Historical Sales + Forecast", "Forecast vs LY"])
+
+    # Agrupamento
+    df_hist['ds'] = pd.to_datetime(df_hist['ds'])
+    filtered_data['ds'] = pd.to_datetime(filtered_data['ds'])
+    monthly_summary = filtered_data.groupby(filtered_data["ds"].dt.to_period("M"))['y'].sum().reset_index()
+    monthly_summary['ds'] = monthly_summary['ds'].dt.to_timestamp()
+    fig = px.line(monthly_summary, x='ds', y='y', title='Historical Units per Month', markers=True, text='y')
+    fig.update_traces(texttemplate='%{text:.2s}', textposition='top center')
+    fig.update_layout(yaxis_title='Units', xaxis_title='Month')
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Comparação Forecast vs LY (Mock para exibição)
+    if view_option == "Forecast vs LY":
+        monthly_summary['LY'] = monthly_summary['y'].shift(12)
+        monthly_summary['pct_change'] = ((monthly_summary['y'] - monthly_summary['LY']) / monthly_summary['LY']) * 100
+        st.dataframe(monthly_summary[['ds', 'y', 'LY', 'pct_change']].round(2))
+    else:
+        # Gráfico
+        fig = px.line(monthly_summary, x='ds', y='y', title='Historical Units per Month', markers=True, text='y')
+        fig.update_traces(texttemplate='%{text:.2s}', textposition='top center')
+        fig.update_layout(yaxis_title='Units', xaxis_title='Month')
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Tabela
+        st.dataframe(monthly_summary[['ds', 'y']].rename(columns={'y': 'Units'}).round(2))
 else:
     st.info("Please upload both historical sales and transition files and click 'Generate Forecast' to continue.")
