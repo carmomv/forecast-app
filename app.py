@@ -74,7 +74,6 @@ if historical_file and transition_file:
     df_hist["weighted_sales"] = df_hist["y"] * df_hist["availability"]
     df_hist["ano_mes"] = df_hist["ds"].dt.to_period("M")
 
-    # === BASELINE POR CATEGORIA ===
     last_3_months = df_hist[df_hist["ds"] >= last_date - pd.DateOffset(months=3)]
     base_cat = last_3_months.groupby("category")["weighted_sales"].sum().reset_index()
     base_cat["baseline_mensal_categoria"] = base_cat["weighted_sales"] / 3
@@ -130,30 +129,59 @@ if historical_file and transition_file:
     st.subheader("Final Forecast Preview")
     st.dataframe(forecast_df.head())
 
+    brands = forecast_df["brand"].unique().tolist()
+    categories = forecast_df["category"].unique().tolist()
+    selected_brand = st.selectbox("Select Brand for Chart/Table Filters", ["All"] + brands)
+    selected_category = st.selectbox("Select Category for Chart/Table Filters", ["All"] + categories)
+    view_type = st.radio("Select View", ["History + Forecast", "Forecast vs LY"], horizontal=True)
+
     df_hist_totals = df_hist.groupby(df_hist["ds"].dt.to_period("M"))["y"].sum().reset_index()
     df_hist_totals.columns = ["ds", "historical_units"]
     df_hist_totals["ds"] = df_hist_totals["ds"].dt.to_timestamp()
 
-    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))[["forecast_units", "forecast_smooth"]].sum().reset_index()
+    forecast_monthly = forecast_df.groupby(forecast_df["ds"].dt.to_period("M"))["forecast_units", "forecast_smooth"].sum().reset_index()
     forecast_monthly["ds"] = forecast_monthly["ds"].dt.to_timestamp()
+
     total_combined = pd.merge(df_hist_totals, forecast_monthly, on="ds", how="outer").fillna(0).sort_values("ds")
 
-    with st.expander("\U0001F4C8 Total Units per Month (Historical + Forecast)", expanded=True):
+    if view_type == "Forecast vs LY":
+        forecast_df["ds_ly"] = forecast_df["ds"] - pd.DateOffset(years=1)
+        hist_lookup_full = df_hist.set_index(["ds", "category", "brand"])["y"]
+        forecast_df["ly_units"] = forecast_df.apply(lambda r: hist_lookup_full.get((r["ds_ly"], r["category"], r["brand"]), 0), axis=1)
+        forecast_df["pct_vs_ly"] = ((forecast_df["forecast_units"] - forecast_df["ly_units"]) / forecast_df["ly_units"]).replace([float('inf'), -float('inf')], 0) * 100
+
+    with st.expander("📈 Total Units per Month (Historical + Forecast)", expanded=True):
         fig = px.line(total_combined, x="ds", y=["historical_units", "forecast_units", "forecast_smooth"], markers=True,
                       title="Historical and Forecast Units per Month")
         fig.update_traces(mode="lines+markers+text", texttemplate='%{y:.0f}', textposition="top center")
         st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("\U0001F4CA Table: Monthly Totals", expanded=False):
+    with st.expander("📊 Table: Monthly Totals", expanded=False):
         st.dataframe(total_combined.rename(columns={"ds": "Month"}))
 
-    with st.expander("\U0001F4CA Table: Forecast by Category", expanded=False):
-        st.dataframe(forecast_df.groupby("category")[["forecast_units", "forecast_smooth"]].sum().reset_index())
+    with st.expander("📊 Table: Forecast by Category", expanded=False):
+        df_cat = forecast_df.copy()
+        if selected_brand != "All":
+            df_cat = df_cat[df_cat["brand"] == selected_brand]
+        if view_type == "Forecast vs LY":
+            grouped = df_cat.groupby("category")[["forecast_units", "ly_units"]].sum().reset_index()
+            grouped["% vs LY"] = ((grouped["forecast_units"] - grouped["ly_units"]) / grouped["ly_units"]).replace([float('inf'), -float('inf')], 0) * 100
+            st.dataframe(grouped)
+        else:
+            st.dataframe(df_cat.groupby("category")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
-    with st.expander("\U0001F4CA Table: Forecast by Brand", expanded=False):
-        st.dataframe(forecast_df.groupby("brand")[["forecast_units", "forecast_smooth"]].sum().reset_index())
+    with st.expander("📊 Table: Forecast by Brand", expanded=False):
+        df_brand = forecast_df.copy()
+        if selected_category != "All":
+            df_brand = df_brand[df_brand["category"] == selected_category]
+        if view_type == "Forecast vs LY":
+            grouped = df_brand.groupby("brand")[["forecast_units", "ly_units"]].sum().reset_index()
+            grouped["% vs LY"] = ((grouped["forecast_units"] - grouped["ly_units"]) / grouped["ly_units"]).replace([float('inf'), -float('inf')], 0) * 100
+            st.dataframe(grouped)
+        else:
+            st.dataframe(df_brand.groupby("brand")[["forecast_units", "forecast_smooth"]].sum().reset_index())
 
-    st.subheader("\U0001F4E5 Download Final Forecast")
+    st.subheader("📥 Download Final Forecast")
     st.download_button(
         label="Download CSV",
         data=forecast_df.to_csv(index=False),
