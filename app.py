@@ -69,5 +69,11 @@ if run_forecast:
     # Lógica do forecast permanece inalterada
     # (O conteúdo do cálculo permanece igual ao anterior)
     st.success("Forecast successfully generated with adjustment factors. Displaying results...")
+
+    # Placeholder de exemplo para visualização dos dados após execução do forecast
+    st.subheader("Forecast Overview")
+    # Essas linhas são apenas para visualização de exemplo e devem ser substituídas pelos resultados reais do forecast
+    st.write("Forecast totals, visualizations and comparison tables will appear here once the logic is integrated.")
+
 else:
     st.info("Please upload both historical sales and transition files and click 'Generate Forecast' to continue.")
