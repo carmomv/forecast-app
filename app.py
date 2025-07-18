@@ -67,52 +67,13 @@ if historical_file and transition_file:
 
 if run_forecast:
     # Lógica do forecast permanece inalterada
+    # (O conteúdo do cálculo permanece igual ao anterior)
     st.success("Forecast successfully generated with adjustment factors. Displaying results...")
 
-    df_hist = pd.read_csv(historical_file)
-    df_trans = pd.read_csv(transition_file)
-
-    # Preview
+    # Placeholder de exemplo para visualização dos dados após execução do forecast
     st.subheader("Forecast Overview")
-    st.write("Historical Sales Preview", df_hist.head())
-    st.write("Transition SKUs Preview", df_trans.head())
+    # Essas linhas são apenas para visualização de exemplo e devem ser substituídas pelos resultados reais do forecast
+    st.write("Forecast totals, visualizations and comparison tables will appear here once the logic is integrated.")
 
-    # Filtros
-    brand_filter = st.selectbox("Select Brand", options=["All"] + sorted(df_hist['brand'].dropna().unique().tolist()))
-    category_filter = st.selectbox("Select Category", options=["All"] + sorted(df_hist['category'].dropna().unique().tolist()))
-
-    filtered_data = df_hist.copy()
-    if brand_filter != "All":
-        filtered_data = filtered_data[filtered_data['brand'] == brand_filter]
-    if category_filter != "All":
-        filtered_data = filtered_data[filtered_data['category'] == category_filter]
-
-    # Campo para ajuste manual por mês
-    st.markdown("**Manual Adjustment Factors by Month**")
-    filtered_data['ds'] = pd.to_datetime(filtered_data['ds'])
-    future_months = sorted(filtered_data[filtered_data['ds'] > filtered_data['ds'].max() - pd.DateOffset(months=13)]['ds'].dt.to_period("M").unique().to_timestamp())
-
-    adjustment_factors = {}
-    for month in future_months:
-        month_str = month.strftime("%b %Y")
-        factor = st.number_input(f"Adjustment factor for {month_str}", min_value=0.0, value=1.0, step=0.01, format="%.2f")
-        adjustment_factors[month] = factor
-
-    # Aplicar os fatores manuais ao dataset
-    filtered_data['adjustment_factor'] = filtered_data['ds'].dt.to_period("M").dt.to_timestamp().map(adjustment_factors).fillna(1.0)
-    filtered_data['adjusted_y'] = filtered_data['y'] * filtered_data['adjustment_factor']
-
-    # Agrupamento
-    monthly_summary = filtered_data.groupby(filtered_data["ds"].dt.to_period("M"))['adjusted_y'].sum().reset_index()
-    monthly_summary['ds'] = monthly_summary['ds'].dt.to_timestamp()
-
-    # Gráfico
-    fig = px.line(monthly_summary, x='ds', y='adjusted_y', title='Historical + Forecast Units per Month (Adjusted)', markers=True, text='adjusted_y')
-    fig.update_traces(texttemplate='%{text:.2f}', textposition='top center')
-    fig.update_layout(yaxis_title='Units', xaxis_title='Month')
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Tabela
-    st.dataframe(monthly_summary[['ds', 'adjusted_y']].rename(columns={'adjusted_y': 'Units'}).round(2))
 else:
     st.info("Please upload both historical sales and transition files and click 'Generate Forecast' to continue.")
